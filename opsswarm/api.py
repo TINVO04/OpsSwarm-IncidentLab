@@ -16,6 +16,31 @@ app=FastAPI(title="OpsSwarm Enterprise OpenClaw+GitHub + IncidentLab",version="2
 from .lab_router import router as lab_router
 app.include_router(lab_router)
 
+async def _github_issue_watcher():
+    """Local/demo fallback when a public GitHub webhook endpoint is unavailable.
+    GitHub webhook delivery remains the primary trigger; this watcher only picks up
+    open OpsSwarm issues that have not yet entered the local orchestrator.
+    """
+    while True:
+        try:
+            required=cfg.get("required_issue_label","opsswarm")
+            if gh.repo and os.environ.get("GITHUB_TOKEN"):
+                issues=await gh.list_open_issues([required])
+                for issue in issues or []:
+                    if issue.get("pull_request"):
+                        continue
+                    number=int(issue["number"])
+                    if number not in engine.runs:
+                        asyncio.create_task(engine.start_issue(number))
+        except Exception as exc:
+            print(f"[github-watcher] {type(exc).__name__}: {exc}",flush=True)
+        await asyncio.sleep(float(os.environ.get("OPSSWARM_GITHUB_POLL_SECONDS","5")))
+
+@app.on_event("startup")
+async def start_github_watcher():
+    if os.environ.get("GITHUB_TOKEN"):
+        app.state.github_watcher=asyncio.create_task(_github_issue_watcher())
+
 @app.get("/health")
 async def health(): return {"ok":True,"version":"2.1.0","architecture":"openclaw+github"}
 

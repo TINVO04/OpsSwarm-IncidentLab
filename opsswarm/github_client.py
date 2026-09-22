@@ -13,6 +13,10 @@ class GitHubClient:
         return r.json() if r.content else None
 
     async def get_issue(self, number:int): return await self._req("GET",f"/repos/{self.repo}/issues/{number}")
+    async def list_open_issues(self, labels: list[str] | None = None, per_page: int = 30):
+        params={"state":"open","per_page":per_page}
+        if labels: params["labels"] = ",".join(labels)
+        return await self._req("GET",f"/repos/{self.repo}/issues",params=params)
     async def comment(self, number:int, body:str): return await self._req("POST",f"/repos/{self.repo}/issues/{number}/comments",json={"body":body})
     async def set_labels(self, number:int, labels:list[str]): return await self._req("POST",f"/repos/{self.repo}/issues/{number}/labels",json={"labels":labels})
     async def close_issue(self, number:int): return await self._req("PATCH",f"/repos/{self.repo}/issues/{number}",json={"state":"closed","state_reason":"completed"})
