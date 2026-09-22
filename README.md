@@ -1,87 +1,81 @@
-# OpsSwarm IncidentLab v1.1
+﻿# OpsSwarm IncidentLab v1.2 Control Center
 
-Corrected observability build of the enterprise incident-response demo/testbed.
+This project is an independent, stateful incident simulation environment for demonstrating the workflow of `OpsSwarm-Enterprise`. It does not merge or vendor the Enterprise codebase.
 
-## What v1.1 fixes
+## Architecture boundary
 
-v1.0 started Prometheus, but OpsSwarm bypassed it and read `/metrics-json` directly. There were also no alert rules and no Alertmanager. Therefore Prometheus was not part of the actual incident trigger path.
+IncidentLab owns only the simulated environment and evidence sources: simulated services/deployment state, metrics/log/evidence snapshots, dependencies, stateful fault injection and recovery APIs, monitoring event generation, and timeline/evidence persistence.
 
-v1.1 adds the complete path:
+OpsSwarm owns workflow authority. The Control Center visualizes the Enterprise lifecycle as telemetry:
 
-```text
-DemoMart /metrics
-      ↓ scrape every 2s
-Prometheus
-      ↓ alert rules
-Alertmanager
-      ↓ webhook
-OpsSwarm /api/v1/alertmanager
-      ↓
-S1 → S2 → S3 → S4 → S5
-      ↓
-Human Approval
-      ↓
-Recovery Tool
-      ↓
-S6 → S7
-```
+`S8 Orchestration Hub -> S1 IntentGuard -> S2 read-only DAG -> S4 specialist dispatch -> S5 evidence/collaboration -> RCA -> S3 HorizonPlan -> Policy -> Recovery -> S6 ResilienceGuard when required -> S7 independent verification -> RESOLVED`
 
-It also fixes C11 so that `telemetry_missing` is visible consistently to Prometheus via `demomart_telemetry_present=0` and removal of error/success series.
+OpenClaw is agent runtime, not policy authority. Investigation agents are read-only. Risky writes are represented as `HUMAN_REQUIRED`; the UI displays the GitHub command and does not grant execution authority itself.
 
 ## Start
 
-```bash
-docker compose up --build -d
+```powershell
+.\scripts\demo-start.ps1
 ```
 
-Wait until the containers are healthy, then open:
+Open `http://localhost:8080/api/ui`.
 
-- OpsSwarm: http://localhost:8080
-- Prometheus: http://localhost:9090
-- Prometheus targets: http://localhost:9090/targets
-- Prometheus alerts: http://localhost:9090/alerts
-- Alertmanager: http://localhost:9093
+Reset:
 
-## Verify Prometheus before demo
-
-All DemoMart targets should be `UP` at `/targets`.
-
-Queries to try in Prometheus:
-
-```promql
-demomart_service_healthy
-
-demomart_error_rate
-
-demomart_latency_ms
-
-demomart_telemetry_present
-
-opsswarm_alertmanager_webhooks_total
+```powershell
+.\scripts\demo-reset.ps1
 ```
 
-## Automatic C03 demo
+Run a scenario:
 
-1. Reset the lab.
-2. Inject `C03 Bad Deployment`.
-3. Wait about 3–5 seconds.
-4. Open Prometheus `/alerts`: `DemoMartHighErrorRate` should be FIRING.
-5. Open Alertmanager: the alert should be visible.
-6. In OpsSwarm click `Refresh Incidents`.
-7. The incident's `alert_source` should equal `prometheus-alertmanager`.
-8. Approve recovery.
-9. The payment error rate returns to normal and Prometheus resolves the alert.
-
-### CLI smoke check
-
-```bash
-bash scripts/verify_observability.sh
+```powershell
+.\scripts\demo-run.ps1 -Scenario booking-api-high-5xx
 ```
 
-## Manual detect
+Stop:
 
-`POST /lab/detect` is retained only as a deterministic fallback and test helper. It is no longer the only path.
+```powershell
+.\scripts\demo-stop.ps1
+```
 
-## Important experimental limitation
+## Stateful simulator API
 
-B0 remains a scripted software baseline, not a human-operator baseline. Do not report its timings as human MTTA/MTTR.
+`GET /api/health`, `/api/services`, `/api/services/{name}`, `/api/metrics`, `/api/logs`, `/api/events`, `/api/dependencies`, `/api/state`, `/api/scenarios`, `/api/evidence`
+
+`POST /api/faults/inject`, `/api/faults/reset`, `/api/recovery/restart`, `/api/recovery/rollback`, `/api/recovery/scale`, `/api/demo/start`, `/api/demo/approve`, `/api/demo/reset`
+
+`GET /api/incidents/{id}`, `/api/incidents/{id}/timeline`
+
+## Primary demo: booking-api-high-5xx
+
+Initial state is approximately `booking-api=HEALTHY`, `error_rate=0.2%`, `latency=180ms`, `database=HEALTHY`.
+
+Injection changes the simulator state to degraded conditions around `42%` errors and `2.8s` latency, with database/dependency evidence showing the injected fault. Recovery changes the simulated state through service admin APIs; it is not a text-only success response.
+
+The default risky rollback path stops at `WAITING FOR GITHUB APPROVAL` and displays:
+
+```text
+/opsswarm approve option-001
+```
+
+After approval, the simulator executes recovery, records recovery/S6 evidence, and S7 independently reads service state. Only a passing verification changes the incident to `RESOLVED` and produces a final report/postmortem.
+
+## Scenarios
+
+- `booking-api-high-5xx`
+- `latency-spike`
+- `database-pool-exhaustion`
+- `dependency-timeout`
+- `failed-deployment`
+- `partial-network-failure`
+
+## UI
+
+The Control Center provides Dashboard, Incidents, Fault Lab, Workflow, Agents, Evidence, Recovery, Verification and Settings navigation areas. Workflow is the primary focus, with `PENDING/RUNNING/WAITING/COMPLETED/FAILED/BLOCKED`, read-only specialist agents, metrics, dependencies, timeline and evidence.
+
+## Integration status
+
+The simulator, Docker services, Prometheus and Alertmanager are real local components. Existing OpsSwarm/OpenClaw/GitHub integration remains intact and is not replaced by the simulator. The local demo path is explicitly simulated and does not claim a GitHub/OpenClaw action occurred unless the Enterprise integration path actually did so.
+
+Secrets remain backend/environment configuration and are not embedded in the frontend.
+

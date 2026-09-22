@@ -1,79 +1,68 @@
 ﻿services:
+  opsswarm:
+    build:
+      context: .
+      dockerfile: opsswarm/Dockerfile
+    ports: ["8080:8080"]
+    environment:
+      PYTHONUNBUFFERED: "1"
+      AUTH_URL: "http://auth:8000"
+      ORDER_URL: "http://order:8000"
+      INVENTORY_URL: "http://inventory:8000"
+      PAYMENT_URL: "http://payment:8000"
+      BOOKING_API_URL: "http://booking-api:8000"
+      PROMETHEUS_URL: "http://prometheus:9090"
+      GITHUB_REPO: "${GITHUB_REPO}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN}"
+    depends_on:
+      auth: {condition: service_healthy}
+      order: {condition: service_healthy}
+      inventory: {condition: service_healthy}
+      payment: {condition: service_healthy}
+      booking-api: {condition: service_healthy}
+      prometheus: {condition: service_started}
+    restart: unless-stopped
+
   auth:
     build: ./services
-    environment:
-      SERVICE_NAME: auth
-      DEFAULT_VERSION: v1.0
+    environment: {SERVICE_NAME: auth, DEFAULT_VERSION: v1.0}
     ports: ["8001:8000"]
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 5s
-      timeout: 2s
-      retries: 10
-
+    healthcheck: {test: ["CMD","python","-c","import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"], interval: 5s, timeout: 2s, retries: 10}
   order:
     build: ./services
-    environment:
-      SERVICE_NAME: order
-      DEFAULT_VERSION: v1.0
+    environment: {SERVICE_NAME: order, DEFAULT_VERSION: v1.0}
     ports: ["8002:8000"]
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 5s
-      timeout: 2s
-      retries: 10
-
+    healthcheck: {test: ["CMD","python","-c","import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"], interval: 5s, timeout: 2s, retries: 10}
   inventory:
     build: ./services
-    environment:
-      SERVICE_NAME: inventory
-      DEFAULT_VERSION: v1.0
+    environment: {SERVICE_NAME: inventory, DEFAULT_VERSION: v1.0}
     ports: ["8003:8000"]
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 5s
-      timeout: 2s
-      retries: 10
-
+    healthcheck: {test: ["CMD","python","-c","import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"], interval: 5s, timeout: 2s, retries: 10}
   payment:
     build: ./services
-    environment:
-      SERVICE_NAME: payment
-      DEFAULT_VERSION: v2.0
+    environment: {SERVICE_NAME: payment, DEFAULT_VERSION: v2.0}
     ports: ["8004:8000"]
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 5s
-      timeout: 2s
-      retries: 10
+    healthcheck: {test: ["CMD","python","-c","import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"], interval: 5s, timeout: 2s, retries: 10}
+  booking-api:
+    build: ./services
+    environment: {SERVICE_NAME: booking-api, DEFAULT_VERSION: v2.0}
+    ports: ["8005:8000"]
+    healthcheck: {test: ["CMD","python","-c","import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"], interval: 5s, timeout: 2s, retries: 10}
 
   alertmanager:
     image: prom/alertmanager:v0.27.0
-    command:
-      - --config.file=/etc/alertmanager/alertmanager.yml
-    volumes:
-      - ./infrastructure/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
+    volumes: ["./infrastructure/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
     ports: ["9093:9093"]
-
   prometheus:
     image: prom/prometheus:v2.54.1
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --web.enable-lifecycle
-    volumes:
-      - ./infrastructure/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./infrastructure/alerts.yml:/etc/prometheus/rules/alerts.yml:ro
+    command: ["--config.file=/etc/prometheus/prometheus.yml","--storage.tsdb.path=/prometheus","--web.enable-lifecycle"]
+    volumes: ["./infrastructure/prometheus.yml:/etc/prometheus/prometheus.yml:ro","./infrastructure/alerts.yml:/etc/prometheus/rules/alerts.yml:ro"]
     depends_on:
-      alertmanager:
-        condition: service_started
-      auth:
-        condition: service_healthy
-      order:
-        condition: service_healthy
-      inventory:
-        condition: service_healthy
-      payment:
-        condition: service_healthy
+      alertmanager: {condition: service_started}
+      auth: {condition: service_healthy}
+      order: {condition: service_healthy}
+      inventory: {condition: service_healthy}
+      payment: {condition: service_healthy}
+      booking-api: {condition: service_healthy}
     ports: ["9090:9090"]
-

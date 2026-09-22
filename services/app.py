@@ -1,4 +1,4 @@
-import os
+﻿import os
 import time
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -11,8 +11,8 @@ app = FastAPI(title=f"DemoMart {SERVICE}")
 state = {
     "version": DEFAULT_VERSION,
     "crash": False,
-    "error_rate": 0.0,
-    "latency_ms": 0,
+    "error_rate": 0.002,
+    "latency_ms": 180,
     "cpu_percent": 15,
     "memory_percent": 25,
     "db_down": False,
@@ -31,14 +31,14 @@ class Version(BaseModel):
 
 
 def healthy():
-    return not any(
-        [
-            state["crash"],
-            state["db_down"],
-            state["db_pool_exhausted"],
-            state["external_timeout"],
-        ]
-    )
+    return not any([
+        state["crash"],
+        state["db_down"],
+        state["db_pool_exhausted"],
+        state["external_timeout"],
+        float(state["error_rate"]) >= 0.30,
+        int(state["latency_ms"]) >= 1000,
+    ])
 
 
 @app.get("/health")
@@ -118,8 +118,8 @@ def fault(req: Fault):
         raise HTTPException(400, "unknown fault")
     if req.fault in {"error_rate", "latency_ms", "cpu_percent", "memory_percent"}:
         defaults = {
-            "error_rate": 0.0,
-            "latency_ms": 0,
+            "error_rate": 0.002,
+            "latency_ms": 180,
             "cpu_percent": 15,
             "memory_percent": 25,
         }
@@ -143,8 +143,8 @@ def reset():
         {
             "version": DEFAULT_VERSION,
             "crash": False,
-            "error_rate": 0.0,
-            "latency_ms": 0,
+            "error_rate": 0.002,
+            "latency_ms": 180,
             "cpu_percent": 15,
             "memory_percent": 25,
             "db_down": False,
@@ -154,3 +154,8 @@ def reset():
         }
     )
     return {"service": SERVICE, "state": state}
+
+
+
+
+

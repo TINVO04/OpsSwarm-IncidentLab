@@ -1,5 +1,7 @@
 ﻿from fastapi import APIRouter
-from .lab import router as lab_router
+from .incidentlab import router as incidentlab_router
+from .lab import router as legacy_router
 
 router = APIRouter()
-router.include_router(lab_router)
+router.include_router(incidentlab_router)
+router.include_router(legacy_router)
