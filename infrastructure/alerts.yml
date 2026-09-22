@@ -1,0 +1,56 @@
+groups:
+  - name: demomart-incidents
+    rules:
+      - alert: DemoMartServiceUnhealthy
+        expr: demomart_service_healthy == 0
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "DemoMart service is unhealthy"
+          description: "{{ $labels.service }} reports healthy=0"
+
+      - alert: DemoMartHighErrorRate
+        expr: demomart_error_rate >= 0.03
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "High application error rate"
+          description: "{{ $labels.service }} error rate is {{ $value }}"
+
+      - alert: DemoMartHighLatency
+        expr: demomart_latency_ms >= 1000
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "High application latency"
+          description: "{{ $labels.service }} latency is {{ $value }} ms"
+
+      - alert: DemoMartHighCPU
+        expr: demomart_cpu_percent >= 90
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU saturation"
+          description: "{{ $labels.service }} CPU is {{ $value }} percent"
+
+      - alert: DemoMartHighMemory
+        expr: demomart_memory_percent >= 90
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory pressure"
+          description: "{{ $labels.service }} memory is {{ $value }} percent"
+
+      - alert: DemoMartTelemetryMissing
+        expr: demomart_telemetry_present == 0
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Required telemetry is missing"
+          description: "{{ $labels.service }} reports telemetry_present=0"

@@ -1,0 +1,13 @@
+scenarios:
+- {id: C01, name: Payment service crash, service: payment, fault: crash, value: true}
+- {id: C02, name: Payment error spike, service: payment, fault: error_rate, value: 0.43}
+- {id: C03, name: Bad payment deployment, service: payment, fault: bad_deployment, value: v2.1}
+- {id: C04, name: Database unavailable, service: order, fault: db_down, value: true}
+- {id: C05, name: DB connection exhaustion, service: order, fault: db_pool_exhausted, value: true}
+- {id: C06, name: API latency, service: auth, fault: latency_ms, value: 2000}
+- {id: C07, name: CPU saturation, service: inventory, fault: cpu_percent, value: 97}
+- {id: C08, name: Memory pressure, service: inventory, fault: memory_percent, value: 95}
+- {id: C09, name: External gateway timeout, service: payment, fault: external_timeout, value: true}
+- {id: C10, name: Duplicate monitoring alerts, service: payment, fault: duplicate_alerts, value: true}
+- {id: C11, name: Missing telemetry, service: payment, fault: telemetry_missing, value: true}
+- {id: C12, name: False recovery, service: payment, fault: error_rate, value: 0.43}

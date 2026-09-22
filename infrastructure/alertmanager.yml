@@ -1,0 +1,16 @@
+﻿global:
+  resolve_timeout: 1m
+
+route:
+  receiver: opsswarm-webhook
+  group_by: [alertname, service]
+  group_wait: 1s
+  group_interval: 2s
+  repeat_interval: 30m
+
+receivers:
+  - name: opsswarm-webhook
+    webhook_configs:
+      - url: http://host.docker.internal:8088/api/v1/alertmanager
+        send_resolved: true
+

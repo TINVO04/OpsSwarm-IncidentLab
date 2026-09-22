@@ -1,0 +1,35 @@
+{
+  "name": "OpsSwarm IncidentLab",
+  "version": "1.1",
+  "skills": [
+    "s1_incident_intake",
+    "s2_severity_assessment",
+    "s3_evidence_collector",
+    "s4_response_orchestrator",
+    "s5_stakeholder_communication",
+    "s6_recovery_verification",
+    "s7_post_incident_review"
+  ],
+  "scenarios": [
+    "C01",
+    "C02",
+    "C03",
+    "C04",
+    "C05",
+    "C06",
+    "C07",
+    "C08",
+    "C09",
+    "C10",
+    "C11",
+    "C12"
+  ],
+  "baseline_note": "B0 scripted, not human study",
+  "observability": {
+    "prometheus": true,
+    "alert_rules": true,
+    "alertmanager": true,
+    "opsswarm_webhook": "/api/v1/alertmanager",
+    "automatic_incident_trigger_path": true
+  }
+}
