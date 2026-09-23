@@ -38,13 +38,80 @@ Stop:
 .\scripts\demo-stop.ps1
 ```
 
+## Automatic GitHub incident flow
+
+A stateful IncidentLab run sends its monitoring payload to `POST /hooks/monitoring`. OpsSwarm creates the GitHub Issue **before** label synchronization, persists the deduplication mapping, and then attempts to apply labels. A label failure is logged as `ISSUE_LABEL_WARNING` and does not delete the Issue or stop orchestration.
+
+```text
+IncidentLab fault/test
+  -> POST /hooks/monitoring
+  -> GitHub Issue created + deduplication key persisted
+  -> issues.opened webhook OR GitHub polling fallback
+  -> S8 -> S1 -> S2 -> S4 -> S5 -> RCA -> S3 -> Policy
+  -> explicit /opsswarm command when human authority is required
+  -> recovery-responder -> S6 when reconciliation is required
+  -> independent S7 verification
+  -> final report + postmortem -> close Issue only after S7 passes
+```
+
+One monitoring identity maps to one GitHub Issue. Re-sending the same `deduplication_key` returns the existing `issue_number` and logs `ISSUE_DEDUPLICATED`. If an unresolved/failed monitoring Issue is closed outside the governed workflow, the poller treats that as state drift and reopens it; manual Issue closure is not an approval/abort command.
+
+### GitHub webhook and polling
+
+Configure GitHub for `issues` and `issue_comment` events and point it at `<public-base>/webhooks/github`. When `GITHUB_WEBHOOK_SECRET` is set, webhook HMAC verification is mandatory; invalid signatures return HTTP 401.
+
+`OPSSWARM_GITHUB_POLL_SECONDS` is the fallback for environments where GitHub cannot reach the local container. The poller discovers monitoring Issues by the trusted marker embedded in the Issue body, queues orchestration without blocking the watcher, and also consumes explicit `/opsswarm ...` comments.
+
+### OpenClaw Gateway on Windows
+
+OpsSwarm in Docker does **not** execute a local `openclaw` binary. It calls the real OpenClaw Gateway running on Windows over HTTP. Default Docker configuration is:
+
+```text
+OPSWARM_OPENCLAW_GATEWAY_URL=http://host.docker.internal:18789
+```
+
+The integration uses the Gateway OpenResponses endpoint and Bearer authentication from `OPENCLAW_GATEWAY_TOKEN`. Multi-agent sessions are explicitly agent-scoped. Keep the token in `.env`/backend configuration only. Useful host checks are `cmd /c openclaw --version`, `cmd /c openclaw gateway status`, and `cmd /c openclaw agents list`.
+
+Required environment keys are documented in `.env.example`. For the reference repository set `GITHUB_REPO=ZINNODNTU/OpsSwarm-IncidentLab`.
+
 ## Stateful simulator API
 
 `GET /api/health`, `/api/services`, `/api/services/{name}`, `/api/metrics`, `/api/logs`, `/api/events`, `/api/dependencies`, `/api/state`, `/api/scenarios`, `/api/evidence`
 
-`POST /api/faults/inject`, `/api/faults/reset`, `/api/recovery/restart`, `/api/recovery/rollback`, `/api/recovery/scale`, `/api/demo/start`, `/api/demo/approve`, `/api/demo/reset`
+`POST /api/faults/inject`, `/api/faults/reset`, `/api/recovery/restart`, `/api/recovery/rollback`, `/api/recovery/scale`, `/api/demo/start`, `/api/demo/reset`
 
 `GET /api/incidents/{id}`, `/api/incidents/{id}/timeline`
+
+## Canonical Enterprise-aligned demo
+
+The recommended demo follows the Enterprise control model:
+
+```text
+IncidentLab fault
+  -> monitoring ingress
+  -> one GitHub Issue
+  -> S8 -> S1 -> S2 -> S4 specialist fan-out
+  -> S5 evidence aggregation -> RCA
+  -> S3 recovery plan -> Policy
+  -> GitHub /opsswarm command when human authority is required
+  -> bounded recovery -> S6/S7
+  -> close Issue only after independent verification
+```
+
+Run:
+
+```powershell
+.\scripts\demo-start.ps1
+.\scripts\demo-e2e.ps1 -Scenario booking-api-high-5xx
+```
+
+For a controlled end-to-end run that posts the explicit GitHub approval command:
+
+```powershell
+.\scripts\demo-e2e.ps1 -Scenario booking-api-high-5xx -Approve
+```
+
+The -Approve switch only posts the exact /opsswarm approve <option-id> command to the GitHub Issue. It does not call a hidden approval or recovery API.
 
 ## Primary demo: booking-api-high-5xx
 
@@ -79,3 +146,7 @@ The simulator, Docker services, Prometheus and Alertmanager are real local compo
 
 Secrets remain backend/environment configuration and are not embedded in the frontend.
 
+
+## Approval authority
+
+IncidentLab has no execution-authority approval API. Legacy `/api/demo/approve` and `/lab/approve/{incident_id}` routes return HTTP 410 and exist only to fail closed for older clients. Use the exact `/opsswarm approve <option-id>` command shown by OpsSwarm on the GitHub Issue.

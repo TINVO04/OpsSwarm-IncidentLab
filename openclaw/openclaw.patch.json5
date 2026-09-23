@@ -1,4 +1,4 @@
-﻿{
+{
   agents: {
     defaults: {
       skipBootstrap: true,
@@ -16,9 +16,15 @@
   },
   skills: {
     load: {
-      extraDirs: ["D:/Minto 2026/OpsSwarm-IncidentLab-v1.1/OpsSwarm-IncidentLab-v1.1/skills"]
+      extraDirs: ["D:/Minto 2026/OpsSwarm-IncidentLab-v1.1/OpsSwarm-IncidentLab-v1.1/skills-enterprise"]
     }
-  }
+  },
+  gateway: {
+    mode: "local",
+    bind: "lan",
+    port: 18789,
+    http: { endpoints: { responses: { enabled: true } } }
+  },
 }
 
 

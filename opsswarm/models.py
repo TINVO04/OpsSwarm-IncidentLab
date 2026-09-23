@@ -52,6 +52,13 @@ class IncidentContext(BaseModel):
     source: str = "github"
     actor: str | None = None
     labels: list[str] = Field(default_factory=list)
+    incident_id: str | None = None
+    incidentlab_run_id: str | None = None
+    scenario_id: str | None = None
+    deduplication_key: str | None = None
+    correlation_key: str | None = None
+    issue_type: str = "incident"
+    issue_url: str | None = None
 
 
 class Task(BaseModel):

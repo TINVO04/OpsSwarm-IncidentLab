@@ -1,0 +1,54 @@
+name: OpsSwarm Incident
+description: Canonical incident record for governed investigation and recovery
+title: "[Incident][SEV?] <service> - <scenario>"
+labels: ["opsswarm", "incident"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## OpsSwarm canonical incident
+        One active incident maps to one GitHub Issue. Repeated alerts should correlate to this Issue instead of creating another Issue.
+  - type: input
+    id: service
+    attributes:
+      label: Service
+      placeholder: booking-api
+    validations: {required: true}
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options: [SEV1, SEV2, SEV3, SEV4]
+    validations: {required: true}
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options: [production, staging, incidentlab, development]
+    validations: {required: true}
+  - type: input
+    id: scenario_id
+    attributes:
+      label: Scenario / alert identity
+      placeholder: booking-api-high-5xx
+    validations: {required: true}
+  - type: textarea
+    id: symptoms
+    attributes:
+      label: Symptoms
+      description: Observable failure only; do not state an unverified root cause.
+    validations: {required: true}
+  - type: textarea
+    id: impact
+    attributes:
+      label: Customer impact
+    validations: {required: true}
+  - type: input
+    id: observed
+    attributes:
+      label: Observed since
+      placeholder: "2026-09-23T01:00:00Z"
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional evidence / references

@@ -1,6 +1,9 @@
 repo: ${GITHUB_REPO}
 required_issue_label: opsswarm
-create_corrective_issues: true
+create_corrective_issues: false
+issue_cardinality: one_active_issue_per_correlation
+issue_correlation: [environment, service, scenario_id]
+corrective_actions: parent_issue_comment
 root_cause_confidence_threshold: 0.80
 verification_confidence_threshold: 0.85
 

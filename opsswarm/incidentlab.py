@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import json, os, threading, uuid, urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from . import tool_adapter as tools
+from .monitoring import log_event
 
 router = APIRouter(prefix="/api")
 DATA = Path(os.getenv("OPSWARM_DATA_DIR", "runtime-data")) / "incidentlab"
@@ -16,7 +17,7 @@ LOCK = threading.RLock()
 
 SCENARIOS: dict[str, dict[str, Any]] = {
     "booking-api-high-5xx": {
-        "service": "booking-api", "severity": "SEV1", "faults": {"error_rate": 0.42, "latency_ms": 2800},
+        "service": "booking-api", "severity": "SEV1", "faults": {"error_rate": 0.42, "latency_ms": 2800, "db_pool_exhausted": True},
         "dependencies": {"database": "DEGRADED"}, "root_cause": "booking-api deployment is returning elevated 5xx responses while database pressure is observed",
         "options": [{"id":"option-001","type":"rollback","risk":"risky_write","label":"Rollback booking-api to last known good version"}]
     },
@@ -44,9 +45,6 @@ SCENARIOS: dict[str, dict[str, Any]] = {
 
 class FaultRequest(BaseModel):
     scenario_id: str
-
-class RecoveryRequest(BaseModel):
-    option_id: str
 
 
 def now() -> str: return datetime.now(timezone.utc).isoformat()
@@ -106,6 +104,9 @@ def _apply_recovery(run):
         tools.set_fault(service,"error_rate",False)
         tools.set_fault(service,"latency_ms",False)
         tools.set_fault(service,"crash",False)
+        tools.set_fault(service,"db_pool_exhausted",False)
+        tools.set_fault(service,"db_down",False)
+        tools.set_fault(service,"external_timeout",False)
     elif typ=="scale":
         tools.set_fault(service,"db_pool_exhausted",False)
         tools.set_fault(service,"error_rate",False)
@@ -114,50 +115,6 @@ def _apply_recovery(run):
         tools.reset_all()
     return tools.getm(service)
 
-def _workflow(run):
-    # This is telemetry for the UI/demo harness; OpsSwarm remains workflow authority.
-    for stage in ["S8","S1","S2"]:
-        run["stages"][stage]["state"]="COMPLETED"
-    agents=[
-        ("opsswarm-observability-investigator","observability"),
-        ("opsswarm-application-investigator","application"),
-        ("opsswarm-infrastructure-investigator","infrastructure"),
-        ("opsswarm-database-investigator","database"),
-    ]
-    run["stages"]["S4"]["state"]="RUNNING"
-    for name,kind in agents:
-        run["agent_status"][name]={"state":"COMPLETED","read_only":True,"finding":f"{kind} evidence collected from simulated sources"}
-        _evidence(run,"S4",name,"investigate",{"read_only":True,"source":"simulator"})
-    run["stages"]["S4"]["state"]="COMPLETED"
-    run["stages"]["S5"]["state"]="COMPLETED"
-    _event(run,"Parallel investigation completed","4 read-only specialists","S4")
-    run["root_cause"]={"summary":SCENARIOS[run["scenario_id"]]["root_cause"],"confidence":0.94}
-    run["stages"]["RCA"]["state"]="COMPLETED"
-    run["stages"]["S3"]["state"]="COMPLETED"
-    opt=run["recovery_options"][0]
-    if opt["risk"]=="risky_write":
-        run["policy_decision"]="HUMAN_REQUIRED"; run["approval_state"]="WAITING_GITHUB_APPROVAL"; run["stages"]["Policy"]["state"]="WAITING"
-        run["recovery_state"]="WAITING_APPROVAL"
-        _event(run,"Policy requires approval","/opsswarm approve option-001","Policy","WAITING")
-    else:
-        run["policy_decision"]="AUTO"; run["approval_state"]="NOT_REQUIRED"; run["stages"]["Policy"]["state"]="COMPLETED"
-
-def _verify(run):
-    services=_services(); current=services.get(run["service"],{})
-    passed=bool(current.get("healthy")) and float(current.get("error_rate",1)) <= 0.01 and int(current.get("latency_ms",999999)) < 1000
-    run["verification_state"]="PASSED" if passed else "FAILED"
-    run["stages"]["S7"]["state"]="COMPLETED" if passed else "FAILED"
-    _evidence(run,"S7","opsswarm-observability-investigator","independent verification",{"metrics":current,"passed":passed})
-    _event(run,"S7 verification passed" if passed else "S7 verification failed","Independent read-only state check","S7", "COMPLETED" if passed else "FAILED")
-    if passed:
-        run["state"]="RESOLVED"; run["recovery_state"]="COMPLETED"
-        run["final_report"]={"status":"RESOLVED","summary":"Simulated service recovered and independently verified"}
-        run["postmortem"]={"incident":run["incident_id"],"root_cause":run["root_cause"],"verification":run["verification_state"]}
-        _event(run,"Incident resolved","Final verification passed")
-        _event(run,"Postmortem generated")
-    else:
-        run["state"]="FAILED"
-
 def start_demo(scenario_id):
     if scenario_id not in SCENARIOS: raise HTTPException(404,"unknown scenario")
     with LOCK:
@@ -165,6 +122,7 @@ def start_demo(scenario_id):
         _inject_service(scenario)
         run=_new_run(scenario_id)
         services=_services()
+        log_event("INCIDENTLAB_FAULT_INJECTED", incident_id=run["incident_id"], incidentlab_run_id=run["run_id"], scenario_id=scenario_id, service=run["service"])
         _evidence(run,"INCIDENTLAB","simulated-monitoring","fault injection",{"scenario":scenario_id,"services":services})
         symptom=(f"error_rate={scenario.get('faults',{}).get('error_rate','n/a')}, "
                  f"latency_ms={scenario.get('faults',{}).get('latency_ms','n/a')}")
@@ -172,7 +130,7 @@ def start_demo(scenario_id):
             "title": f"[IncidentLab][{scenario['severity']}] {scenario['service']} - {scenario_id}",
             "service": scenario["service"],
             "severity": scenario["severity"],
-            "severity_label": scenario["severity"].lower(),
+            "severity_label": f"sev:{scenario['severity'][3:]}",
             "scenario_id": scenario_id,
             "symptom": symptom,
             "customer_impact": "Simulated incident generated by IncidentLab",
@@ -181,18 +139,26 @@ def start_demo(scenario_id):
             "source": "incidentlab",
             "run_id": run["run_id"],
             "incident_id": run["incident_id"],
+            "fault_type": ",".join(scenario.get("faults", {}).keys()),
+            "correlation_key": f"incidentlab:{str(scenario.get('service','unknown')).strip().lower()}:{str(scenario_id).strip().lower()}",
+            "deduplication_key": f"incidentlab:{str(scenario.get('service','unknown')).strip().lower()}:{str(scenario_id).strip().lower()}",
             "metrics": services.get(scenario["service"],{}),
             "dependencies": _deps(services),
+            "initial_evidence": run["evidence"],
+            "incidentlab_reference": f"{os.getenv('INCIDENTLAB_PUBLIC_URL','http://localhost:8080').rstrip('/')}/api/incidents/{run['incident_id']}",
         }
         ingress=os.getenv("INCIDENTLAB_MONITORING_URL","http://127.0.0.1:8080/hooks/monitoring")
         req=urllib.request.Request(ingress,data=json.dumps(payload).encode("utf-8"),headers={"Content-Type":"application/json"},method="POST")
+        log_event("MONITORING_EVENT_SENT", incident_id=run["incident_id"], incidentlab_run_id=run["run_id"], scenario_id=scenario_id, service=run["service"], monitoring_url=ingress, deduplication_key=payload["deduplication_key"])
         try:
             with urllib.request.urlopen(req,timeout=15) as resp:
                 result=json.loads(resp.read().decode("utf-8"))
         except Exception as exc:
+            log_event("MONITORING_EVENT_FAILED", incident_id=run["incident_id"], incidentlab_run_id=run["run_id"], scenario_id=scenario_id, service=run["service"], error_type=type(exc).__name__, error=str(exc))
             _event(run,"Monitoring ingress failed",str(exc),"INCIDENTLAB","FAILED")
             _write(run)
             raise HTTPException(502,f"Monitoring ingress failed: {exc}")
+        log_event("MONITORING_EVENT_ACCEPTED", incident_id=run["incident_id"], incidentlab_run_id=run["run_id"], scenario_id=scenario_id, service=run["service"], issue_number=result.get("issue_number"), issue_url=result.get("issue_url"), deduplicated=result.get("deduplicated", False))
         run["github_issue_number"]=result.get("issue_number")
         run["github_issue_url"]=result.get("issue_url")
         run["state"]="ISSUE_CREATED"
@@ -201,16 +167,6 @@ def start_demo(scenario_id):
         _event(run,"Waiting for GitHub issues.opened webhook","OpsSwarm starts orchestration only from GitHub webhook","S8","WAITING")
         _write(run)
         return run
-
-def approve(run, option_id):
-    if option_id not in [x["id"] for x in run["recovery_options"]]: raise HTTPException(400,"unknown option")
-    if run["policy_decision"]!="HUMAN_REQUIRED": raise HTTPException(409,"approval is not required")
-    with LOCK:
-        run["approval_state"]="APPROVED"; run["stages"]["Policy"]["state"]="COMPLETED"; run["stages"]["Recovery"]["state"]="RUNNING"; run["recovery_state"]="RUNNING"
-        _event(run,"Human approved option",f"/opsswarm approve {option_id}","Policy")
-        result=_apply_recovery(run); _evidence(run,"Recovery","opsswarm-recovery-responder","execute authorized recovery",result)
-        run["stages"]["Recovery"]["state"]="COMPLETED"; run["stages"]["S6"]["state"]="COMPLETED"; _event(run,"Recovery completed","State changed in simulator","Recovery")
-        _verify(run); _write(run); return run
 
 def latest():
     files=sorted(RUNS.glob("*.json"), key=lambda p:p.stat().st_mtime, reverse=True)
@@ -265,19 +221,19 @@ def reset():
 def restart():
     r=latest()
     if not r: raise HTTPException(404,"no active run")
-    r["policy_decision"]="AUTO"; r["approval_state"]="NOT_REQUIRED"; result=_apply_recovery(r); _write(r); return {"ok":True,"state":result}
+    result=_apply_recovery(r); _event(r,"Recovery API restart executed","Authorized caller changed simulator state","Recovery"); _write(r); return {"ok":True,"state":result}
 
 @router.post("/recovery/rollback")
 def rollback():
     r=latest()
     if not r: raise HTTPException(404,"no active run")
-    result=_apply_recovery(r); _write(r); return {"ok":True,"state":result}
+    result=_apply_recovery(r); _event(r,"Recovery API rollback executed","Authorized caller changed simulator state","Recovery"); _write(r); return {"ok":True,"state":result}
 
 @router.post("/recovery/scale")
 def scale():
     r=latest()
     if not r: raise HTTPException(404,"no active run")
-    tools.set_fault(r["service"],"db_pool_exhausted",False); tools.set_fault(r["service"],"error_rate",False); tools.set_fault(r["service"],"latency_ms",False); result=tools.getm(r["service"]); _write(r); return {"ok":True,"state":result}
+    tools.set_fault(r["service"],"db_pool_exhausted",False); tools.set_fault(r["service"],"error_rate",False); tools.set_fault(r["service"],"latency_ms",False); result=tools.getm(r["service"]); _event(r,"Recovery API scale executed","Authorized caller changed simulator state","Recovery"); _write(r); return {"ok":True,"state":result}
 
 @router.get("/incidents/{incident_id}")
 def incident(incident_id):

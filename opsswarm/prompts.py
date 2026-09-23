@@ -10,14 +10,14 @@ Allowed task types: OBSERVE, INVESTIGATE, DIAGNOSE. Do not create REMEDIATE task
 Allowed profiles: observability-investigator, application-investigator, infrastructure-investigator, database-investigator.
 All initial tasks MUST be read-only. Use dependencies and parallel work when useful.
 Return an object with key "tasks"; each task has: id,type,objective,profile,required_capabilities,risk,depends_on,parallelizable,expected_output,status.
-Risk must be "read".
+Risk must be exactly "read". status must be exactly "PENDING". expected_output must be a short string such as "Finding".
 {JSON_ONLY}
 Incident:\n{incident.model_dump_json(indent=2)}'''
 
 def specialist_prompt(incident: IncidentContext, task_json: str) -> str:
     return f'''You are an OpsSwarm specialist working on one bounded incident task.
 Do only the assigned task. Respect READ_ONLY scope. Do not perform remediation or writes.
-Use available OpenClaw tools to gather real evidence. If a tool is unavailable, say so rather than fabricate evidence.
+Use available OpenClaw tools to gather real evidence. For IncidentLab incidents, read the real simulator over HTTP at http://127.0.0.1:8080 using GET-only endpoints such as /api/state, /api/services/{{name}}, /api/metrics, /api/logs, /api/dependencies, and the IncidentLab reference in the Issue body. Do not call any recovery/write endpoint during investigation. If a tool or endpoint is unavailable, report that limitation rather than fabricate evidence.
 Return JSON with: task_id, finding, evidence (array of concrete refs/observations), hypothesis, confidence (0..1), recommended_next_action, raw (object).
 {JSON_ONLY}
 Incident:\n{incident.model_dump_json(indent=2)}\nTask:\n{task_json}'''
@@ -41,13 +41,14 @@ Incident:\n{incident.model_dump_json(indent=2)}\nRoot cause:\n{root.model_dump_j
 def recovery_prompt(incident:IncidentContext, root:RootCauseArtifact, option_json:str) -> str:
     return f'''You are OpsSwarm recovery-responder. Execute ONLY the authorized remediation option below using available OpenClaw tools.
 Do not broaden scope. Preserve idempotency where supported. If transport becomes ambiguous after a write, do not blindly repeat it.
+For environment=incidentlab, execute the authorized action against the real simulator at http://127.0.0.1:8080. Map the authorized action to exactly one backend endpoint: restart -> POST /api/recovery/restart, rollback -> POST /api/recovery/rollback, scale -> POST /api/recovery/scale. Use an available HTTP/exec tool (for example curl.exe) and include the observed HTTP response in evidence. Never call these endpoints unless this prompt contains the already-authorized option.
 Return JSON: option_id,success,summary,evidence[],ambiguous,raw.
 {JSON_ONLY}
 Incident:\n{incident.model_dump_json(indent=2)}\nRoot cause:\n{root.model_dump_json(indent=2)}\nAuthorized option:\n{option_json}'''
 
 def verify_prompt(incident:IncidentContext, execution_json:str) -> str:
     return f'''You are OpsSwarm S7 independent verifier. Independently check whether customer/business service health is restored.
-Do not accept the executor's success claim as proof. Use read-only evidence from metrics, health checks, logs or service state.
+Do not accept the executor's success claim as proof. Use read-only evidence from metrics, health checks, logs or service state. For environment=incidentlab, independently GET http://127.0.0.1:8080/api/services/{{service}}, /api/metrics and /api/dependencies after recovery. Verification must fail if the service is still degraded, error_rate is above 1%, latency is 1000ms or higher, or required evidence cannot be read.
 Return JSON: verified,summary,evidence[],confidence,raw.
 {JSON_ONLY}
 Incident:\n{incident.model_dump_json(indent=2)}\nExecution result (context only; not proof):\n{execution_json}'''

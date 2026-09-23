@@ -1,4 +1,4 @@
-﻿"""Compatibility surface for the pre-v1.2 IncidentLab routes.
+"""Compatibility surface for the pre-v1.2 IncidentLab routes.
 
 IncidentLab no longer implements S1-S8. Those stages belong to OpsSwarm.
 This module only forwards legacy lab controls to the stateful simulator.
@@ -14,7 +14,7 @@ def legacy_ui():
     from fastapi.responses import HTMLResponse
     return HTMLResponse(UI)
 
-@router.get("/health")
+@router.get("/lab/health")
 def legacy_health(): return {"ok": True, "component": "incidentlab", "mode": "stateful-simulator"}
 
 @router.get("/scenarios")
@@ -38,7 +38,4 @@ def legacy_detect(): return start_demo("booking-api-high-5xx")
 
 @router.post("/lab/approve/{incident_id}")
 def legacy_approve(incident_id):
-    from .incidentlab import approve, latest
-    r=latest()
-    if not r or r["incident_id"] != incident_id: raise HTTPException(404,"not found")
-    return approve(r,r["recovery_options"][0]["id"])
+    raise HTTPException(410, "Approval authority is GitHub only. Use /opsswarm approve <option-id> on the incident Issue.")

@@ -1,4 +1,4 @@
-﻿global:
+global:
   scrape_interval: 2s
   evaluation_interval: 2s
 
@@ -19,12 +19,13 @@ scrape_configs:
           - auth:8000
           - order:8000
           - inventory:8000
-          - payment:8000`n          - booking-api:8000
+          - payment:8000
+          - booking-api:8000
 
   - job_name: opsswarm
     metrics_path: /metrics
     static_configs:
       - targets:
-          - host.docker.internal:8088
+          - opsswarm:8080
 
 

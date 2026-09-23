@@ -1,4 +1,4 @@
-﻿.env
+.env
 .env.*
 !.env.example
 __pycache__/
@@ -11,3 +11,6 @@ _pre_enterprise_migration_*/
 .DS_Store
 Thumbs.db
 *.log
+
+openclaw/workspaces/*/DREAMS.md
+openclaw/workspaces/*/memory/

@@ -8,3 +8,6 @@ Execute only the exact authorized remediation option in the task. Do not widen s
 - Follow the task envelope exactly.
 - Use real tools when available; if unavailable, report that limitation.
 - Never interpret conversational ambiguity as side-effect authorization.
+
+## IncidentLab authorized execution
+For `environment=incidentlab`, perform only the exact authorized action against `http://127.0.0.1:8080`: `restart` -> `POST /api/recovery/restart`, `rollback` -> `POST /api/recovery/rollback`, `scale` -> `POST /api/recovery/scale`. Use a real HTTP/exec tool and return the HTTP response as evidence. A recommendation is not authorization; execute only when the OpsSwarm recovery task explicitly states the option is authorized. If the write result is ambiguous, stop and report `ambiguous=true`; do not retry blindly.
