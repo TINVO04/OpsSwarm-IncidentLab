@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-09-24T21:27:03.146510",
+  "model": "gpt-5.6-terra",
+  "gateway": "openclaw@18789",
+  "repository": "TINVO04/OpsSwarm-IncidentLab",
+  "results": [
+    {
+      "arm": "M1_OPSSWARM",
+      "scenario": "booking-api-high-5xx",
+      "issue_number": 3,
+      "elapsed_s": 8.35,
+      "status": "FAILED",
+      "verified": false
+    },
+    {
+      "arm": "M1_OPSSWARM",
+      "scenario": "latency-spike",
+      "issue_number": 6,
+      "elapsed_s": 369.82,
+      "status": "TIMEOUT",
+      "verified": false
+    },
+    {
+      "arm": "M1_OPSSWARM",
+      "scenario": "database-pool-exhaustion",
+      "issue_number": 7,
+      "elapsed_s": 368.03,
+      "status": "TIMEOUT",
+      "verified": false
+    }
+  ]
+}

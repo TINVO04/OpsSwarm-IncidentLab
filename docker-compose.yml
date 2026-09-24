@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: opsswarm/Dockerfile
-    ports: ["8080:8080"]
+    ports: ["8088:8080"]
     environment:
       - PYTHONUNBUFFERED=1
       - AUTH_URL=http://auth:8000
@@ -20,7 +20,7 @@ services:
       - OPSWARM_DATA_DIR=/app/runtime-data
       - OPSWARM_OPENCLAW_GATEWAY_URL=${OPSWARM_OPENCLAW_GATEWAY_URL:-http://host.docker.internal:18789}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
-      - INCIDENTLAB_PUBLIC_URL=${INCIDENTLAB_PUBLIC_URL:-http://localhost:8080}
+      - INCIDENTLAB_PUBLIC_URL=${INCIDENTLAB_PUBLIC_URL:-http://localhost:8088}
     volumes:
       - ./runtime-data:/app/runtime-data
     extra_hosts:

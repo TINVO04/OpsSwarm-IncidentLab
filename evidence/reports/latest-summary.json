@@ -1,0 +1,11 @@
+{
+  "warning": "B0 is scripted software baseline; do not interpret as human MTTA/MTTR",
+  "summary": {
+    "M1_OPSSWARM": {
+      "runs": 3,
+      "mean_elapsed_s": 910.2139406666666,
+      "verified_rate": 1.0,
+      "resolved_rate": 1.0
+    }
+  }
+}

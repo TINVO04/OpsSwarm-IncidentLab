@@ -295,12 +295,14 @@ async def alertmanager_webhook(payload: dict[str, Any]):
             "fault_type": labels.get("alertname") or "monitoring-alert",
         }
         if active and active.get("service") == service and active.get("state") not in {"RESOLVED", "STOPPED"}:
+            corr = active.get("correlation_key") or f"incidentlab:{str(service).strip().lower()}:{str(active.get('scenario_id')).strip().lower()}"
             event.update({
                 "run_id": active.get("run_id"),
                 "incident_id": active.get("incident_id"),
                 "scenario_id": active.get("scenario_id"),
-                "deduplication_key": f"incidentlab:{active.get('incident_id')}",
-                "incidentlab_reference": f"{os.environ.get('INCIDENTLAB_PUBLIC_URL','http://localhost:8080').rstrip('/')}/api/incidents/{active.get('incident_id')}",
+                "correlation_key": corr,
+                "deduplication_key": corr,
+                "incidentlab_reference": f"{os.environ.get('INCIDENTLAB_PUBLIC_URL','http://localhost:8088').rstrip('/')}/api/incidents/{active.get('incident_id')}",
             })
         else:
             event["deduplication_key"] = f"alertmanager:{alert.get('fingerprint') or service + ':' + str(labels.get('alertname'))}"

@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
 function Get-RunState([int]$IssueNumber) {
-    try { return Invoke-RestMethod -Uri "http://localhost:8080/runs/$IssueNumber" -TimeoutSec 10 }
+    try { return Invoke-RestMethod -Uri "http://localhost:8088/runs/$IssueNumber" -TimeoutSec 10 }
     catch { return $null }
 }
 
@@ -16,10 +16,10 @@ Write-Host "=== OpsSwarm IncidentLab Enterprise Demo ==="
 Write-Host "Scenario: $Scenario"
 docker compose up --build -d
 Start-Sleep -Seconds 8
-$health = Invoke-RestMethod -Uri "http://localhost:8080/health" -TimeoutSec 15
+$health = Invoke-RestMethod -Uri "http://localhost:8088/health" -TimeoutSec 15
 Write-Host "Health: $($health.ok) | OpenClaw: $($health.openclaw.ok)"
 
-$start = Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/demo/start" -ContentType "application/json" -Body (@{scenario_id=$Scenario} | ConvertTo-Json)
+$start = Invoke-RestMethod -Method Post -Uri "http://localhost:8088/api/demo/start" -ContentType "application/json" -Body (@{scenario_id=$Scenario} | ConvertTo-Json)
 $issue = [int]$start.github_issue_number
 Write-Host "GitHub Issue: #$issue"
 if ($start.github_issue_url) { Write-Host "URL: $($start.github_issue_url)" }

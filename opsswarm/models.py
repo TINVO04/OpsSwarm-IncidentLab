@@ -2,7 +2,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 def utc_now() -> datetime:
@@ -74,6 +74,24 @@ class Task(BaseModel):
     status: Literal["PENDING", "RUNNING", "DONE", "FAILED", "SKIPPED"] = "PENDING"
 
 
+def _parse_confidence(v: Any) -> float:
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        s = v.strip().lower()
+        if s in {"high", "very high", "certain", "confirmed", "true"}:
+            return 0.95
+        if s in {"medium", "moderate", "likely"}:
+            return 0.7
+        if s in {"low", "uncertain", "false"}:
+            return 0.3
+        try:
+            return float(s)
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
 class Finding(BaseModel):
     task_id: str
     finding: str
@@ -82,6 +100,11 @@ class Finding(BaseModel):
     confidence: float = 0.0
     recommended_next_action: str | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def validate_confidence(cls, v: Any) -> float:
+        return _parse_confidence(v)
 
 
 class RootCauseArtifact(BaseModel):
@@ -94,6 +117,11 @@ class RootCauseArtifact(BaseModel):
     remediation_options: list[str] = Field(default_factory=list)
     human_input_question: str | None = None
     corrective_actions: list[str] = Field(default_factory=list)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def validate_confidence(cls, v: Any) -> float:
+        return _parse_confidence(v)
 
 
 class RemediationOption(BaseModel):
@@ -112,6 +140,11 @@ class RecoveryPlan(BaseModel):
     confidence: float = 0.0
     requires_business_input: bool = False
     business_input_question: str | None = None
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def validate_confidence(cls, v: Any) -> float:
+        return _parse_confidence(v)
 
 
 class DecisionRequest(BaseModel):
@@ -139,6 +172,11 @@ class VerificationResult(BaseModel):
     evidence: list[str] = Field(default_factory=list)
     confidence: float = 0.0
     raw: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def validate_confidence(cls, v: Any) -> float:
+        return _parse_confidence(v)
 
 
 class RunRecord(BaseModel):

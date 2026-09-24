@@ -1,6 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
+import json
+from pathlib import Path
 import uuid
 
 from . import skill_logic as S
@@ -17,6 +19,7 @@ class Orchestrator:
         self.cfg = cfg
         self.github = github
         self.oc = openclaw
+        self.data_dir = data_dir
         self.store = RunStore(data_dir)
         self.issue_registry = MonitoringIssueRegistry(data_dir)
         self.ev = EvidenceStore(data_dir)
@@ -40,13 +43,56 @@ class Orchestrator:
     def _log(self, run: RunRecord, event: str, **extra) -> None:
         log_event(event, **self._identity(run), **extra)
 
+    def _sync_incidentlab(self, run: RunRecord):
+        try:
+            if not run.incident or not run.incident.incidentlab_run_id:
+                return
+            data_dir = getattr(self, "data_dir", None) or "runtime-data"
+            lab_file = Path(data_dir) / "incidentlab" / "runs" / f"{run.incident.incidentlab_run_id}.json"
+            if not lab_file.exists():
+                return
+            data = json.loads(lab_file.read_text(encoding="utf-8"))
+            data["state"] = run.state.value
+            stages = data.setdefault("stages", {})
+            stages["S8"] = {"state": "COMPLETED"}
+            if run.incident:
+                stages["S1"] = {"state": "COMPLETED"}
+            if run.tasks:
+                stages["S2"] = {"state": "COMPLETED"}
+                agent_status = data.setdefault("agent_status", {})
+                for t in run.tasks:
+                    agent_status[t.profile] = {"read_only": t.risk.value == "read", "state": t.status}
+            if run.findings:
+                stages["S4"] = {"state": "COMPLETED"}
+                stages["S5"] = {"state": "COMPLETED"}
+            if run.root_cause:
+                stages["RCA"] = {"state": "COMPLETED"}
+            if run.recovery_plan:
+                stages["S3"] = {"state": "COMPLETED"}
+            if run.decision:
+                data["policy_decision"] = run.decision.reason
+                data["approval_state"] = run.decision.kind
+                stages["Policy"] = {"state": "WAITING" if run.decision.status == "OPEN" else "COMPLETED"}
+            if run.execution:
+                stages["Recovery"] = {"state": "COMPLETED" if run.execution.success else "FAILED"}
+                stages["S6"] = {"state": "COMPLETED"}
+                data["recovery_state"] = "COMPLETED" if run.execution.success else "FAILED"
+            if run.verification:
+                stages["S7"] = {"state": "COMPLETED" if run.verification.verified else "FAILED"}
+                data["verification_state"] = "VERIFIED" if run.verification.verified else "FAILED"
+            lab_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
     async def _save(self, run, kind, payload):
         self.ev.append(run.run_id, kind, payload)
         self.store.save(run)
+        self._sync_incidentlab(run)
 
     async def _set_state(self, run: RunRecord, state: RunState):
         run.transition(state)
         self.store.save(run)
+        self._sync_incidentlab(run)
         self._log(run, "RUN_STATE_CHANGED", state=state.value)
         cfg = self.cfg.get("labels", {})
         current = (cfg.get("lifecycle") or {}).get(state.value)
@@ -172,7 +218,8 @@ class Orchestrator:
         self._log(run, "RCA_COMPLETED", confidence=run.root_cause.confidence, rca_status=run.root_cause.status)
         await self.github.comment(run.issue_number, diagnosis(run))
         rca_threshold = float(self.cfg.get("root_cause_confidence_threshold", 0.80))
-        if run.root_cause.status == "uncertain" or run.root_cause.confidence < rca_threshold:
+        has_provided_input = any(isinstance(h, dict) and h.get("authority") == "provided-input" for h in run.human_inputs)
+        if (run.root_cause.status == "uncertain" or run.root_cause.confidence < rca_threshold) and not has_provided_input:
             question = run.root_cause.human_input_question or "Root-cause confidence is below the autonomous threshold. Provide relevant operational/business context, or use `/opsswarm investigate <request>` to request more read-only evidence."
             run.decision = DecisionRequest(
                 id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}",
